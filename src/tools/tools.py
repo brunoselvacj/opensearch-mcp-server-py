@@ -499,7 +499,7 @@ TOOL_REGISTRY = {
     },
     'SearchIndexTool': {
         'display_name': 'SearchIndexTool',
-        'description': 'Searches an index using a query written in query domain-specific language (DSL) in OpenSearch',
+        'description': 'Searches an index using a query written in query domain-specific language (DSL) in OpenSearch. Supports pagination with size (default: 10, max: 100) and from parameters to limit response size and prevent token overflow.',
         'input_schema': SearchIndexArgs.model_json_schema(),
         'function': search_index_tool,
         'args_model': SearchIndexArgs,
@@ -524,7 +524,7 @@ TOOL_REGISTRY = {
     },
     'GetSegmentsTool': {
         'display_name': 'GetSegmentsTool',
-        'description': 'Gets information about Lucene segments in indices, including memory usage, document counts, and segment sizes. Can be filtered by specific indices.',
+        'description': 'Gets information about Lucene segments in indices, including memory usage, document counts, and segment sizes. Can be filtered by specific indices. Supports limit parameter (default: 1000) to prevent token overflow.',
         'input_schema': GetSegmentsArgs.model_json_schema(),
         'function': get_segments_tool,
         'args_model': GetSegmentsArgs,

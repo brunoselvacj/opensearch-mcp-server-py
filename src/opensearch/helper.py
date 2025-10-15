@@ -45,10 +45,28 @@ def get_index_mapping(args: GetIndexMappingArgs) -> json:
 
 
 def search_index(args: SearchIndexArgs) -> json:
+    """Search an index with pagination support.
+
+    Args:
+        args: SearchIndexArgs containing index, query, and optional pagination params
+
+    Returns:
+        json: Search results from OpenSearch
+    """
     from .client import initialize_client
 
     client = initialize_client(args)
-    response = client.search(index=args.index, body=args.query)
+
+    # Ensure query is a dict for merging
+    query_body = args.query if isinstance(args.query, dict) else {}
+
+    # Apply pagination parameters (override any user-provided values)
+    # Cap size at maximum of 100 to prevent token overflow
+    effective_size = min(args.size, 100) if args.size else 10
+    query_body['size'] = effective_size
+    query_body['from'] = args.from_ if args.from_ is not None else 0
+
+    response = client.search(index=args.index, body=query_body)
     return response
 
 
@@ -62,21 +80,26 @@ def get_shards(args: GetShardsArgs) -> json:
 
 def get_segments(args: GetSegmentsArgs) -> json:
     """Get information about Lucene segments in indices.
-    
+
     Args:
-        args: GetSegmentsArgs containing optional index filter
-        
+        args: GetSegmentsArgs containing optional index filter and limit
+
     Returns:
         json: Segment information for the specified indices or all indices
     """
     from .client import initialize_client
-    
+
     client = initialize_client(args)
-    
+
     # If index is provided, filter by that index
     index_param = args.index if args.index else None
-    
+
     response = client.cat.segments(index=index_param, format='json')
+
+    # Apply limit to prevent token overflow
+    if args.limit and isinstance(response, list):
+        return response[:args.limit]
+
     return response
 
 

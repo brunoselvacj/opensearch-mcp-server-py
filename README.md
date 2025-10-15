@@ -77,6 +77,8 @@ The following tools are available but disabled by default. To enable them, see t
   - `opensearch_url` (optional): The OpenSearch cluster URL to connect to
   - `index` (required): The name of the index to search in
   - `query` (required): The search query in OpenSearch Query DSL format
+  - `size` (optional): Maximum number of hits to return (default: 10, max: 100). Limits response size to prevent token overflow
+  - `from` (optional): Starting offset for pagination (default: 0). Use with size for pagination
 
 - **GetShardsTool**
   - `opensearch_url` (optional): The OpenSearch cluster URL to connect to
@@ -115,6 +117,7 @@ The following tools are available but disabled by default. To enable them, see t
 
   - `opensearch_url` (optional): The OpenSearch cluster URL to connect to
   - `index` (optional): Limit the information returned to the specified indices. If not provided, returns segments for all indices
+  - `limit` (optional): Maximum number of segments to return (default: 1000). Limits response size to prevent token overflow
 
 - **CatNodesTool**
 

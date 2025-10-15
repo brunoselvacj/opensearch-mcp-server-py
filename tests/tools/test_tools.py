@@ -297,7 +297,10 @@ class TestTools:
         assert result[0]['type'] == 'text'
         assert 'Search results from test-index' in result[0]['text']
         assert json.loads(result[0]['text'].split('\n', 1)[1]) == mock_results
-        self.mock_client.search.assert_called_once_with(index='test-index', body={'match_all': {}})
+        # Pagination params should be added with defaults
+        self.mock_client.search.assert_called_once_with(
+            index='test-index', body={'match_all': {}, 'size': 10, 'from': 0}
+        )
 
     @pytest.mark.asyncio
     async def test_search_index_tool_error(self):
@@ -311,7 +314,133 @@ class TestTools:
         assert len(result) == 1
         assert result[0]['type'] == 'text'
         assert 'Error searching index: Test error' in result[0]['text']
-        self.mock_client.search.assert_called_once_with(index='test-index', body={'match_all': {}})
+        # Pagination params should be added with defaults even on error path
+        self.mock_client.search.assert_called_once_with(
+            index='test-index', body={'match_all': {}, 'size': 10, 'from': 0}
+        )
+
+    @pytest.mark.asyncio
+    async def test_search_index_tool_with_default_size(self):
+        """Test search_index_tool applies default size of 10."""
+        # Setup
+        mock_results = {'hits': {'total': {'value': 100}, 'hits': []}}
+        self.mock_client.search.return_value = mock_results
+        # Execute
+        args = self.SearchIndexArgs(index='test-index', query={'match_all': {}})
+        result = await self._search_index_tool(args)
+        # Assert
+        assert len(result) == 1
+        assert result[0]['type'] == 'text'
+        # Should call search with size=10 injected into body
+        expected_body = {'match_all': {}, 'size': 10, 'from': 0}
+        self.mock_client.search.assert_called_once_with(index='test-index', body=expected_body)
+
+    @pytest.mark.asyncio
+    async def test_search_index_tool_with_custom_size(self):
+        """Test search_index_tool with custom size parameter."""
+        # Setup
+        mock_results = {'hits': {'total': {'value': 50}, 'hits': []}}
+        self.mock_client.search.return_value = mock_results
+        # Execute
+        args = self.SearchIndexArgs(index='test-index', query={'match_all': {}}, size=25)
+        result = await self._search_index_tool(args)
+        # Assert
+        assert len(result) == 1
+        assert result[0]['type'] == 'text'
+        # Should call search with size=25 injected into body
+        expected_body = {'match_all': {}, 'size': 25, 'from': 0}
+        self.mock_client.search.assert_called_once_with(index='test-index', body=expected_body)
+
+    @pytest.mark.asyncio
+    async def test_search_index_tool_with_from_parameter(self):
+        """Test search_index_tool with from_ (offset) parameter."""
+        # Setup
+        mock_results = {'hits': {'total': {'value': 100}, 'hits': []}}
+        self.mock_client.search.return_value = mock_results
+        # Execute
+        args = self.SearchIndexArgs(index='test-index', query={'match_all': {}}, from_=20)
+        result = await self._search_index_tool(args)
+        # Assert
+        assert len(result) == 1
+        assert result[0]['type'] == 'text'
+        # Should call search with from=20 injected into body
+        expected_body = {'match_all': {}, 'size': 10, 'from': 20}
+        self.mock_client.search.assert_called_once_with(index='test-index', body=expected_body)
+
+    @pytest.mark.asyncio
+    async def test_search_index_tool_with_size_and_from(self):
+        """Test search_index_tool with both size and from_ parameters."""
+        # Setup
+        mock_results = {'hits': {'total': {'value': 100}, 'hits': []}}
+        self.mock_client.search.return_value = mock_results
+        # Execute
+        args = self.SearchIndexArgs(
+            index='test-index', query={'match_all': {}}, size=50, from_=30
+        )
+        result = await self._search_index_tool(args)
+        # Assert
+        assert len(result) == 1
+        assert result[0]['type'] == 'text'
+        # Should call search with size=50 and from=30 injected into body
+        expected_body = {'match_all': {}, 'size': 50, 'from': 30}
+        self.mock_client.search.assert_called_once_with(index='test-index', body=expected_body)
+
+    @pytest.mark.asyncio
+    async def test_search_index_tool_enforces_max_size(self):
+        """Test search_index_tool enforces maximum size of 100."""
+        # Setup
+        mock_results = {'hits': {'total': {'value': 1000}, 'hits': []}}
+        self.mock_client.search.return_value = mock_results
+        # Execute - request 200 but should be capped at 100
+        args = self.SearchIndexArgs(index='test-index', query={'match_all': {}}, size=200)
+        result = await self._search_index_tool(args)
+        # Assert
+        assert len(result) == 1
+        assert result[0]['type'] == 'text'
+        # Should cap size at 100
+        expected_body = {'match_all': {}, 'size': 100, 'from': 0}
+        self.mock_client.search.assert_called_once_with(index='test-index', body=expected_body)
+
+    @pytest.mark.asyncio
+    async def test_search_index_tool_preserves_query_body_structure(self):
+        """Test search_index_tool preserves existing query body structure."""
+        # Setup
+        mock_results = {'hits': {'total': {'value': 10}, 'hits': []}}
+        self.mock_client.search.return_value = mock_results
+        # Execute with complex query that already has some params
+        complex_query = {
+            'query': {'match': {'field': 'value'}},
+            'sort': [{'timestamp': 'desc'}],
+            '_source': ['field1', 'field2'],
+        }
+        args = self.SearchIndexArgs(index='test-index', query=complex_query, size=20)
+        result = await self._search_index_tool(args)
+        # Assert
+        assert len(result) == 1
+        # Should merge pagination params with existing query structure
+        expected_body = {
+            'query': {'match': {'field': 'value'}},
+            'sort': [{'timestamp': 'desc'}],
+            '_source': ['field1', 'field2'],
+            'size': 20,
+            'from': 0,
+        }
+        self.mock_client.search.assert_called_once_with(index='test-index', body=expected_body)
+
+    @pytest.mark.asyncio
+    async def test_search_index_tool_overrides_user_size_if_exceeds_max(self):
+        """Test search_index_tool overrides user-provided size in query body if it exceeds max."""
+        # Setup
+        mock_results = {'hits': {'total': {'value': 1000}, 'hits': []}}
+        self.mock_client.search.return_value = mock_results
+        # Execute - query body has size=500, should be overridden by max
+        query_with_size = {'match_all': {}, 'size': 500}
+        args = self.SearchIndexArgs(index='test-index', query=query_with_size, size=50)
+        result = await self._search_index_tool(args)
+        # Assert
+        # Parameter size=50 should override query body size=500
+        expected_body = {'match_all': {}, 'size': 50, 'from': 0}
+        self.mock_client.search.assert_called_once_with(index='test-index', body=expected_body)
 
     @pytest.mark.asyncio
     async def test_get_shards_tool(self):
@@ -539,17 +668,110 @@ class TestTools:
         """Test get_segments_tool exception handling."""
         # Setup
         self.mock_client.cat.segments.side_effect = Exception('Test error')
-        
+
         # Execute
         args = self.GetSegmentsArgs()
         result = await self._get_segments_tool(args)
-        
+
         # Assert
         assert len(result) == 1
         assert result[0]['type'] == 'text'
         assert 'Error getting segment information: Test error' in result[0]['text']
         self.mock_client.cat.segments.assert_called_once_with(index=None, format='json')
-    
+
+    @pytest.mark.asyncio
+    async def test_get_segments_tool_with_limit(self):
+        """Test get_segments_tool with limit parameter to prevent token overflow."""
+        # Setup - create many segments that would exceed token limit
+        mock_segments = []
+        for i in range(100):
+            mock_segments.append({
+                'index': f'index-{i}',
+                'shard': str(i % 5),
+                'prirep': 'p',
+                'segment': f's{i}',
+                'generation': str(i),
+                'docs.count': '100',
+                'docs.deleted': '5',
+                'size': '1mb',
+                'memory.bookkeeping': '500b',
+                'memory.vectors': '0b',
+                'memory.docvalues': '200b',
+                'memory.terms': '300b',
+                'version': '8.0.0'
+            })
+        self.mock_client.cat.segments.return_value = mock_segments
+
+        # Execute with limit=50
+        args = self.GetSegmentsArgs(limit=50)
+        result = await self._get_segments_tool(args)
+
+        # Assert - should only return first 50 segments
+        assert len(result) == 1
+        assert result[0]['type'] == 'text'
+        # Check that we have limited results
+        assert 'index-0' in result[0]['text']
+        assert 'index-49' in result[0]['text']
+        assert 'index-50' not in result[0]['text']  # Should be truncated
+        assert 'index-99' not in result[0]['text']
+
+    @pytest.mark.asyncio
+    async def test_get_segments_tool_default_limit(self):
+        """Test get_segments_tool applies default limit of 1000."""
+        # Setup - create 1500 segments
+        mock_segments = [{'index': f'idx-{i}', 'shard': '0', 'prirep': 'p', 'segment': f's{i}'} for i in range(1500)]
+        self.mock_client.cat.segments.return_value = mock_segments
+
+        # Execute without limit parameter
+        args = self.GetSegmentsArgs()
+        result = await self._get_segments_tool(args)
+
+        # Assert - should cap at 1000
+        assert len(result) == 1
+        # Should have segments 0-999 but not 1000+
+        assert 'idx-0' in result[0]['text']
+        assert 'idx-999' in result[0]['text']
+        assert 'idx-1000' not in result[0]['text']
+        assert 'idx-1499' not in result[0]['text']
+
+    @pytest.mark.asyncio
+    async def test_get_segments_tool_with_limit_and_index(self):
+        """Test get_segments_tool with both limit and index parameters."""
+        # Setup
+        mock_segments = []
+        for i in range(200):
+            mock_segments.append({
+                'index': 'test-index',
+                'shard': str(i % 10),
+                'prirep': 'p' if i % 2 == 0 else 'r',
+                'segment': f's{i}',
+                'generation': str(i),
+                'docs.count': '100',
+                'docs.deleted': '5',
+                'size': '1mb',
+                'memory.bookkeeping': '500b',
+                'memory.vectors': '0b',
+                'memory.docvalues': '200b',
+                'memory.terms': '300b',
+                'version': '8.0.0'
+            })
+        self.mock_client.cat.segments.return_value = mock_segments
+
+        # Execute with both index and limit
+        args = self.GetSegmentsArgs(index='test-index', limit=100)
+        result = await self._get_segments_tool(args)
+
+        # Assert
+        assert len(result) == 1
+        assert result[0]['type'] == 'text'
+        assert 'Segment information for index: test-index' in result[0]['text']
+        # Should have limited segments
+        assert 's0' in result[0]['text']
+        assert 's99' in result[0]['text']
+        assert 's100' not in result[0]['text']
+        assert 's199' not in result[0]['text']
+        self.mock_client.cat.segments.assert_called_once_with(index='test-index', format='json')
+
     @pytest.mark.asyncio
     async def test_cat_nodes_tool(self):
         """Test cat_nodes_tool successful."""

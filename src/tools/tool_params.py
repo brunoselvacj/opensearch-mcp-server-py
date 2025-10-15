@@ -31,6 +31,21 @@ class GetIndexMappingArgs(baseToolArgs):
 class SearchIndexArgs(baseToolArgs):
     index: str = Field(description='The name of the index to search in')
     query: Any = Field(description='The search query in OpenSearch query DSL format')
+    size: Optional[int] = Field(
+        default=10,
+        description='Maximum number of hits to return (default: 10, max: 100). Limits response size to prevent token overflow. Values exceeding 100 will be capped at 100.',
+        ge=1,
+    )
+    from_: Optional[int] = Field(
+        default=0,
+        description='Starting offset for pagination (default: 0). Use with size for pagination.',
+        alias='from',
+        ge=0,
+        serialization_alias='from',
+    )
+
+    class Config:
+        populate_by_name = True
 
 
 class GetShardsArgs(baseToolArgs):
@@ -65,12 +80,17 @@ class GetClusterStateArgs(baseToolArgs):
 
 class GetSegmentsArgs(baseToolArgs):
     """Arguments for the GetSegmentsTool."""
-    
+
     index: Optional[str] = Field(
-        default=None, 
+        default=None,
         description='Limit the information returned to the specified indices. If not provided, returns segments for all indices.'
     )
-    
+    limit: Optional[int] = Field(
+        default=1000,
+        description='Maximum number of segments to return (default: 1000). Limits response size to prevent token overflow.',
+        ge=1,
+    )
+
     class Config:
         json_schema_extra = {
             "examples": [
